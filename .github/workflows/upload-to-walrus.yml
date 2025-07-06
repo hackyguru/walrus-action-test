@@ -18,6 +18,7 @@ jobs:
       run: |
         # Create a tar.gz archive of the entire repository
         # Exclude .git directory and other unnecessary files
+        # Use --warning=no-file-changed to ignore file change warnings
         tar -czf codebase.tar.gz \
           --exclude='.git' \
           --exclude='.github' \
@@ -26,7 +27,12 @@ jobs:
           --exclude='dist' \
           --exclude='build' \
           --exclude='*.log' \
-          .
+          --exclude='*.tmp' \
+          --exclude='*.temp' \
+          --exclude='.DS_Store' \
+          --exclude='Thumbs.db' \
+          --warning=no-file-changed \
+          . || if [ $? -eq 1 ]; then echo "Warning: Some files changed during archiving, but archive was created successfully"; else exit $?; fi
         
         # Display archive info
         echo "Archive created: codebase.tar.gz"
