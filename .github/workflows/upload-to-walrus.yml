@@ -1,0 +1,70 @@
+name: Upload Codebase to Walrus
+
+on:
+  push:
+    branches: [ "**" ]  # Trigger on push to any branch
+
+jobs:
+  upload-to-walrus:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history to ensure we get all files
+
+    - name: Create codebase archive
+      run: |
+        # Create a tar.gz archive of the entire repository
+        # Exclude .git directory and other unnecessary files
+        tar -czf codebase.tar.gz \
+          --exclude='.git' \
+          --exclude='.github' \
+          --exclude='node_modules' \
+          --exclude='.next' \
+          --exclude='dist' \
+          --exclude='build' \
+          --exclude='*.log' \
+          .
+        
+        # Display archive info
+        echo "Archive created: codebase.tar.gz"
+        ls -lh codebase.tar.gz
+        
+    - name: Upload to Walrus
+      run: |
+        # Upload the archive to Walrus
+        response=$(curl -X PUT \
+          "https://publisher.walrus-testnet.walrus.space/v1/blobs?encoding_type=RS2&epochs=1&deletable=false&force=true" \
+          -H "Content-Type: application/octet-stream" \
+          --data-binary @codebase.tar.gz \
+          -w "%{http_code}" \
+          -o response.json)
+        
+        # Check if upload was successful
+        if [ "$response" -eq 200 ]; then
+          echo "✅ Successfully uploaded codebase to Walrus!"
+          echo "Response:"
+          cat response.json | jq '.' || cat response.json
+        else
+          echo "❌ Failed to upload to Walrus. HTTP Status: $response"
+          echo "Response:"
+          cat response.json
+          exit 1
+        fi
+        
+    - name: Display upload summary
+      if: success()
+      run: |
+        echo "🎉 Codebase upload completed successfully!"
+        echo "Repository: ${{ github.repository }}"
+        echo "Branch: ${{ github.ref_name }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Timestamp: $(date -u)"
+        
+    - name: Clean up
+      if: always()
+      run: |
+        # Remove temporary files
+        rm -f codebase.tar.gz response.json 
