@@ -165,11 +165,63 @@ jobs:
           if [ ! -z "$blob_id" ]; then
             echo "🎯 Blob ID: $blob_id"
             echo "📄 Access your codebase at: https://aggregator.walrus-testnet.walrus.space/v1/$blob_id"
+            
+            # Export blob_id for the next step
+            echo "WALRUS_BLOB_ID=$blob_id" >> $GITHUB_ENV
+          else
+            echo "❌ Failed to extract blob ID from response"
+            exit 1
           fi
         else
           echo "❌ Failed to upload to Walrus. HTTP Status: $response"
           echo "Response:"
           cat response.json
+          exit 1
+        fi
+        
+    - name: Update ENS Text Record
+      run: |
+        # Extract repository information
+        REPO_NAME="${GITHUB_REPOSITORY#*/}"  # Get repository name without owner
+        GITHUB_USERNAME="${GITHUB_REPOSITORY%/*}"  # Get GitHub username
+        
+        echo "📝 Updating ENS text record via server..."
+        echo "Label (GitHub username): $GITHUB_USERNAME"
+        echo "Repository: $REPO_NAME"
+        echo "CID (Blob ID): $WALRUS_BLOB_ID"
+        
+        # Call the ENS update server (hardcoded URL)
+        # TODO: Replace with your ngrok URL (e.g., https://23da-83-144-23-157.ngrok-free.app)
+        # For production, replace with your deployed server URL
+        ENS_SERVER_URL="https://23da-83-144-23-157.ngrok-free.app"
+        
+        response=$(curl -X POST \
+          "$ENS_SERVER_URL/api/update-ens" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"label\": \"$GITHUB_USERNAME\",
+            \"repository\": \"$REPO_NAME\",
+            \"cid\": \"$WALRUS_BLOB_ID\"
+          }" \
+          -w "%{http_code}" \
+          -o ens_response.json)
+        
+        # Check if the request was successful
+        if [ "$response" -eq 200 ]; then
+          echo "✅ Successfully updated ENS text record!"
+          echo "Response:"
+          cat ens_response.json | jq '.' || cat ens_response.json
+          
+          # Extract transaction hash if available
+          tx_hash=$(cat ens_response.json | jq -r '.data.transactionHash // empty')
+          if [ ! -z "$tx_hash" ]; then
+            echo "🔗 Transaction hash: $tx_hash"
+            echo "🌐 View on Base Sepolia: https://sepolia.basescan.org/tx/$tx_hash"
+          fi
+        else
+          echo "❌ Failed to update ENS text record. HTTP Status: $response"
+          echo "Response:"
+          cat ens_response.json
           exit 1
         fi
         
@@ -186,4 +238,4 @@ jobs:
       if: always()
       run: |
         # Remove temporary files
-        rm -f codebase.json response.json create_codebase_json.py 
+        rm -f codebase.json response.json create_codebase_json.py ens_response.json 
